@@ -6,6 +6,8 @@ Made this small lib as I was having trouble with termbox when updating the whole
 
 You can check out an example program here: https://github.com/jonvaldes/termo_example
 
+Also, here's the package documentation: https://godoc.org/github.com/jonvaldes/termo
+
 Only tested in OSX for a couple of simple projects, so I wouldn't advise relying on this for serious stuff.
 
 
