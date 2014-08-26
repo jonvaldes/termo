@@ -67,43 +67,90 @@ func ReadScanCode() (ScanCode, error) {
 	return s, err
 }
 
+type Attribute int
+
+const (
+	AttrNone  Attribute = 0
+	AttrBold  Attribute = 1
+	AttrDim   Attribute = 2
+	AttrUnder Attribute = 4
+	AttrBlink Attribute = 5
+	AttrRev   Attribute = 7
+	AttrHid   Attribute = 8
+)
+
+type Color int
+
+const (
+	ColorBlack Color = 30 + iota
+	ColorRed
+	ColorGreen
+	ColorYellow
+	ColorBlue
+	ColorMagenta
+	ColorCyan
+	ColorGray
+	ColorDefault Color = 39
+)
+
+func (c Color) Light() Color {
+	return c + 60
+}
+
+func background(c Color) Color {
+	return c + 10
+}
+
+type CellState struct {
+	Attrib  Attribute
+	FGColor Color
+	BGColor Color
+}
+
+type cell struct {
+	state CellState
+	r     rune
+}
+
 // Framebuffer contains the runes to draw
 // in the terminal
 type Framebuffer struct {
 	w, h  int
-	chars []rune
+	chars []cell
 }
 
 // NewFramebuffer creates a Framebuffer with the specified size
 // and initializes it filling it with blank spaces
 func NewFramebuffer(w, h int) *Framebuffer {
-	result := &Framebuffer{w, h, make([]rune, w*h)}
+	result := &Framebuffer{w, h, make([]cell, w*h)}
 	result.Clear()
 	return result
 }
 
 // Get returns the rune stored in the [x,y] position.
 // If coords are outside the framebuffer size, it returns ' '
-func (f *Framebuffer) Get(x, y int) rune {
+func (f *Framebuffer) Get(x, y int) (rune, CellState) {
 	if x < 0 || y < 0 || x >= f.w || y >= f.h {
-		return ' '
+		return ' ', CellState{AttrNone, ColorDefault, ColorDefault}
 	}
-	return f.chars[x+y*f.w]
+	c := f.chars[x+y*f.w]
+	return c.r, c.state
 }
 
 // Put sets a rune in the specified position
-func (f *Framebuffer) Put(x, y int, r rune) {
+func (f *Framebuffer) Put(x, y int, s CellState, r rune) {
 	if x < 0 || y < 0 || x >= f.w || y >= f.h {
 		return
 	}
-	f.chars[x+y*f.w] = r
+	f.chars[x+y*f.w].r = r
+	f.chars[x+y*f.w].state = s
 }
 
 // PutRect fills a rectangular region with a rune
-func (f *Framebuffer) PutRect(x0, y0, w, h int, r rune) {
+func (f *Framebuffer) PutRect(x0, y0, w, h int, s CellState, r rune) {
 	for y := y0; y < y0+h; y++ {
 		for x := x0; x < x0+w; x++ {
-			f.Put(x, y, r)
+			f.Put(x, y, s, r)
 		}
 	}
 }
@@ -111,17 +158,17 @@ func (f *Framebuffer) PutRect(x0, y0, w, h int, r rune) {
 // PutText draws a string from left to right, starting at x0,y0
 // There is no wrapping mechanism, and parts of the text outside
 // the framebuffer will be ignored.
-func (f *Framebuffer) PutText(x0, y0 int, t string) {
+func (f *Framebuffer) PutText(x0, y0 int, s CellState, t string) {
 	i := 0
 	for _, runeValue := range t {
-		f.Put(x0+i, y0, runeValue)
+		f.Put(x0+i, y0, s, runeValue)
 		i++
 	}
 }
 
 // Clear fills the framebuffer with blank spaces
 func (f *Framebuffer) Clear() {
-	f.PutRect(0, 0, f.w, f.h, ' ')
+	f.PutRect(0, 0, f.w, f.h, CellState{Attrib: AttrNone, FGColor: ColorDefault, BGColor: ColorDefault}, ' ')
 }
 
 // Flush pushes the current state of the framebuffer to the terminal
@@ -131,7 +178,10 @@ func (f *Framebuffer) Flush() {
 		if y != 0 {
 			fmt.Print("\n")
 		}
-		s := f.chars[y*f.w : (y+1)*f.w]
-		fmt.Print(string(s))
+		for x := 0; x < f.w; x++ {
+			c := f.chars[y*f.w+x]
+			fmt.Printf("\033[%d;%d;%dm%c\033[0m", c.state.Attrib, c.state.FGColor, background(c.state.BGColor), c.r)
+		}
 	}
+	fmt.Printf("\033[0m")
 }
