@@ -64,18 +64,27 @@ func NewFramebuffer(w, h int) *Framebuffer {
 }
 
 func (f *Framebuffer) Get(x, y int) rune {
+	if x < 0 || y < 0 || x >= f.w || y >= f.h {
+		return ' '
+	}
 	return f.chars[x+y*f.w]
 }
 
 func (f *Framebuffer) Set(x, y int, r rune) {
+	if x < 0 || y < 0 || x >= f.w || y >= f.h {
+		return
+	}
 	f.chars[x+y*f.w] = r
 }
 
 func (f *Framebuffer) Draw() {
 	fmt.Printf("\033[0;0H")
 	for y := 0; y < f.h; y++ {
+		if y != 0 {
+			fmt.Print("\n")
+		}
 		s := f.chars[y*f.w : (y+1)*f.w]
-		fmt.Println(string(s))
+		fmt.Print(string(s))
 	}
 }
 
@@ -84,6 +93,14 @@ func (f *Framebuffer) Rect(x0, y0, w, h int, r rune) {
 		for x := x0; x < x0+w; x++ {
 			f.Set(x, y, r)
 		}
+	}
+}
+
+func (f *Framebuffer) SetText(x0, y0 int, t string) {
+	i := 0
+	for _, runeValue := range t {
+		f.Set(x0+i, y0, runeValue)
+		i++
 	}
 }
 
