@@ -67,6 +67,19 @@ func ReadScanCode() (ScanCode, error) {
 	return s, err
 }
 
+func StartKeyReadLoop(keyChan chan<- ScanCode, errChan chan<- error) {
+	go func() {
+		for {
+			s, err := ReadScanCode()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			keyChan <- s
+		}
+	}()
+}
+
 type Attribute int
 
 const (
