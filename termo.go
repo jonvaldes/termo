@@ -25,12 +25,14 @@ func Init() error {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("\033[?25l")
 	return nil
 }
 
 // Stop restores the terminal to its original state
 func Stop() {
 	terminal.Restore(syscall.Stdin, oldTermState)
+	fmt.Printf("\033[?25h")
 }
 
 // Size returns the current size of the terminal
