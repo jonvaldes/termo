@@ -193,6 +193,9 @@ func (f *Framebuffer) Flush() {
 		}
 		for x := 0; x < f.w; x++ {
 			c := f.chars[y*f.w+x]
+			if c.r < 32 {
+				continue
+			}
 			fmt.Printf("\033[%d;%d;%dm%c\033[0m", c.state.Attrib, c.state.FGColor, background(c.state.BGColor), c.r)
 		}
 	}
