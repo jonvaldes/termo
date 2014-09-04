@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"code.google.com/p/go.crypto/ssh/terminal"
+	"github.com/jonvaldes/termo/terminal"
 )
 
 // NotATerminal is the error returned when running
