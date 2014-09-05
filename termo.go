@@ -15,6 +15,8 @@ var NotATerminal error = errors.New("not running in a terminal")
 
 var oldTermState *terminal.State
 
+// Control sequences documentation: http://www.xfree86.org/current/ctlseqs.html
+
 // Init initializes termo to work with the terminal
 func Init() error {
 	if !terminal.IsTerminal(syscall.Stdin) {
@@ -25,14 +27,19 @@ func Init() error {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("\033[?25l")
+	fmt.Printf("\033[?25l") // Hide cursor
 	return nil
 }
 
 // Stop restores the terminal to its original state
 func Stop() {
 	terminal.Restore(syscall.Stdin, oldTermState)
-	fmt.Printf("\033[?25h")
+	fmt.Printf("\033[?25h")   // Unhide cursor
+	fmt.Printf("\033[?1003l") // Reset mouse
+}
+
+func EnableMouseEvents() {
+	fmt.Printf("\033[?1003h")
 }
 
 // Size returns the current size of the terminal
@@ -46,12 +53,29 @@ type ScanCode []byte
 // IsEscapeCode returns true if the terminal
 // considers it an escape code
 func (s ScanCode) IsEscapeCode() bool {
-	return s[0] == 27 && s[1] == 91
+	return len(s) > 2 && s[0] == 27 && s[1] == 91
 }
 
 // EscapeCode returns the escape code for a keypress
 func (s ScanCode) EscapeCode() byte {
 	return s[2]
+}
+
+func (s ScanCode) IsMouseMoveEvent() bool {
+	return len(s) == 6 && s.IsEscapeCode() && s[2] == 77 && s[3] == 67
+}
+
+func (s ScanCode) IsMouseDownEvent() bool {
+	return len(s) == 6 && s.IsEscapeCode() && s[2] == 77 && s[3] == 32
+}
+
+func (s ScanCode) IsMouseUpEvent() bool {
+	return len(s) == 6 && s.IsEscapeCode() && s[2] == 77 && s[3] == 35
+}
+
+// Coords returned start at [0,0] for upper-left corner
+func (s ScanCode) MouseCoords() (int, int) {
+	return int(s[4] - 33), int(s[5] - 33)
 }
 
 // Rune returns the actual key pressed (only for
