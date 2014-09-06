@@ -27,15 +27,23 @@ func Init() error {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("\033[?25l") // Hide cursor
+	HideCursor()
 	return nil
 }
 
 // Stop restores the terminal to its original state
 func Stop() {
 	terminal.Restore(syscall.Stdin, oldTermState)
-	fmt.Printf("\033[?25h")   // Unhide cursor
+	ShowCursor()
 	fmt.Printf("\033[?1003l") // Reset mouse
+}
+
+func HideCursor() {
+	fmt.Printf("\033[?25l")
+}
+
+func ShowCursor() {
+	fmt.Printf("\033[?25h")
 }
 
 func EnableMouseEvents() {
@@ -146,6 +154,10 @@ type CellState struct {
 	BGColor Color
 }
 
+var (
+	StateDefault = CellState{Attrib: AttrNone, FGColor: ColorDefault, BGColor: ColorDefault}
+)
+
 type cell struct {
 	state CellState
 	r     rune
@@ -177,7 +189,7 @@ func (f *Framebuffer) Get(x, y int) (rune, CellState) {
 }
 
 // Put sets a rune in the specified position
-func (f *Framebuffer) Put(x, y int, s CellState, r rune) {
+func (f *Framebuffer) Set(x, y int, s CellState, r rune) {
 	if x < 0 || y < 0 || x >= f.w || y >= f.h {
 		return
 	}
@@ -185,11 +197,72 @@ func (f *Framebuffer) Put(x, y int, s CellState, r rune) {
 	f.chars[x+y*f.w].state = s
 }
 
-// PutRect fills a rectangular region with a rune
-func (f *Framebuffer) PutRect(x0, y0, w, h int, s CellState, r rune) {
+func (f *Framebuffer) SetRune(x, y int, r rune) {
+	if x < 0 || y < 0 || x >= f.w || y >= f.h {
+		return
+	}
+	f.chars[x+y*f.w].r = r
+}
+
+// PutRect fills a rectangular region with a rune and state
+func (f *Framebuffer) SetRect(x0, y0, w, h int, s CellState, r rune) {
 	for y := y0; y < y0+h; y++ {
 		for x := x0; x < x0+w; x++ {
-			f.Put(x, y, s, r)
+			f.Set(x, y, s, r)
+		}
+	}
+}
+
+// PutRect fills a rectangular region with a rune and state
+func (f *Framebuffer) AttribRect(x0, y0, w, h int, s CellState) {
+	for y := y0; y < y0+h; y++ {
+		for x := x0; x < x0+w; x++ {
+			if x >= 0 && y >= 0 && x < f.w && y < f.h {
+				f.chars[x+y*f.w].state = s
+			}
+		}
+	}
+}
+
+var singleWidthCharset = []rune{'─', '│', '┌', '┐', '└', '┘'}
+var doubleWidthCharset = []rune{'═', '║', '╔', '╗', '╚', '╝'}
+
+func (f *Framebuffer) ASCIIRect(x0, y0, w, h int, doubleWidth bool, clearInside bool) {
+	c := singleWidthCharset
+	if doubleWidth {
+		c = doubleWidthCharset
+	}
+
+	for y := y0; y < y0+h; y++ {
+		for x := x0; x < x0+w; x++ {
+			var r rune
+			if x == 0 {
+				if y == 0 {
+					r = c[2]
+				} else if y == y0+h-1 {
+					r = c[4]
+				} else {
+					r = c[1]
+				}
+			} else if x == x0+w-1 {
+				if y == 0 {
+					r = c[3]
+				} else if y == y0+h-1 {
+					r = c[5]
+				} else {
+					r = c[1]
+				}
+			} else if y == 0 || y == y0+h-1 {
+				r = c[0]
+			} else {
+				if !clearInside {
+					continue
+				} else {
+					r = ' '
+				}
+			}
+
+			f.SetRune(x, y, r)
 		}
 	}
 }
@@ -197,17 +270,17 @@ func (f *Framebuffer) PutRect(x0, y0, w, h int, s CellState, r rune) {
 // PutText draws a string from left to right, starting at x0,y0
 // There is no wrapping mechanism, and parts of the text outside
 // the framebuffer will be ignored.
-func (f *Framebuffer) PutText(x0, y0 int, s CellState, t string) {
+func (f *Framebuffer) SetText(x0, y0 int, t string) {
 	i := 0
 	for _, runeValue := range t {
-		f.Put(x0+i, y0, s, runeValue)
+		f.SetRune(x0+i, y0, runeValue)
 		i++
 	}
 }
 
 // Clear fills the framebuffer with blank spaces
 func (f *Framebuffer) Clear() {
-	f.PutRect(0, 0, f.w, f.h, CellState{Attrib: AttrNone, FGColor: ColorDefault, BGColor: ColorDefault}, ' ')
+	f.SetRect(0, 0, f.w, f.h, StateDefault, ' ')
 }
 
 // Flush pushes the current state of the framebuffer to the terminal
