@@ -46,6 +46,13 @@ func ShowCursor() {
 	fmt.Printf("\033[?25h")
 }
 
+var cursorPos [2]int
+
+func SetCursor(x, y int) {
+	cursorPos[0] = x
+	cursorPos[1] = y
+}
+
 func EnableMouseEvents() {
 	fmt.Printf("\033[?1003h")
 }
@@ -278,6 +285,17 @@ func (f *Framebuffer) SetText(x0, y0 int, t string) {
 	}
 }
 
+// PutText draws a string from left to right, starting at x0,y0
+// There is no wrapping mechanism, and parts of the text outside
+// the framebuffer will be ignored.
+func (f *Framebuffer) AttribText(x0, y0 int, s CellState, t string) {
+	i := 0
+	for _, runeValue := range t {
+		f.Set(x0+i, y0, s, runeValue)
+		i++
+	}
+}
+
 // Clear fills the framebuffer with blank spaces
 func (f *Framebuffer) Clear() {
 	f.SetRect(0, 0, f.w, f.h, StateDefault, ' ')
@@ -299,4 +317,7 @@ func (f *Framebuffer) Flush() {
 		}
 	}
 	fmt.Printf("\033[0m")
+
+	// Move cursor to correct position
+	fmt.Printf("\033[%d;%dH", cursorPos[1]+1, cursorPos[0]+1)
 }
