@@ -9,9 +9,9 @@ import (
 	"github.com/jonvaldes/termo/terminal"
 )
 
-// NotATerminal is the error returned when running
+// ErrNotATerminal is the error returned when running
 // termo in an unsupported environment
-var NotATerminal error = errors.New("not running in a terminal")
+var ErrNotATerminal = errors.New("not running in a terminal")
 
 var oldTermState *terminal.State
 
@@ -20,7 +20,7 @@ var oldTermState *terminal.State
 // Init initializes termo to work with the terminal
 func Init() error {
 	if !terminal.IsTerminal(syscall.Stdin) {
-		return NotATerminal
+		return ErrNotATerminal
 	}
 	var err error
 	oldTermState, err = terminal.MakeRaw(syscall.Stdin)
@@ -38,21 +38,27 @@ func Stop() {
 	fmt.Printf("\033[?1003l") // Reset mouse
 }
 
+// HideCursor makes the cursor invisible
 func HideCursor() {
 	fmt.Printf("\033[?25l")
 }
 
+// ShowCursor makes the cursor visible
 func ShowCursor() {
 	fmt.Printf("\033[?25h")
 }
 
 var cursorPos [2]int
 
+// SetCursor positions the cursor at the specified coordinates.
+// Cursor visibility is not affected.
 func SetCursor(x, y int) {
 	cursorPos[0] = x
 	cursorPos[1] = y
 }
 
+// EnableMouseEvents makes mouse events start
+// arriving through the input read loop
 func EnableMouseEvents() {
 	fmt.Printf("\033[?1003h")
 }
@@ -76,19 +82,23 @@ func (s ScanCode) EscapeCode() byte {
 	return s[2]
 }
 
+// IsMouseMoveEvent returns wether it is a mouse move event
 func (s ScanCode) IsMouseMoveEvent() bool {
 	return len(s) == 6 && s.IsEscapeCode() && s[2] == 77 && s[3] == 67
 }
 
+// IsMouseDownEvent returns wether it is a mouse button down event
 func (s ScanCode) IsMouseDownEvent() bool {
 	return len(s) == 6 && s.IsEscapeCode() && s[2] == 77 && s[3] == 32
 }
 
+// IsMouseUpEvent returns wether it is a mouse button up event
 func (s ScanCode) IsMouseUpEvent() bool {
 	return len(s) == 6 && s.IsEscapeCode() && s[2] == 77 && s[3] == 35
 }
 
-// Coords returned start at [0,0] for upper-left corner
+// MouseCoords returns data for the mouse position.
+// Returned coords start at [0,0] for upper-left corner
 func (s ScanCode) MouseCoords() (int, int) {
 	return int(s[4] - 33), int(s[5] - 33)
 }
@@ -108,6 +118,10 @@ func ReadScanCode() (ScanCode, error) {
 	return s, err
 }
 
+// StartKeyReadLoop runs a goroutine that
+// keeps reading terminal input forever.
+// It returns events through the keyChan param, and
+// errors through the errChan parameter
 func StartKeyReadLoop(keyChan chan<- ScanCode, errChan chan<- error) {
 	go func() {
 		for {
@@ -121,8 +135,12 @@ func StartKeyReadLoop(keyChan chan<- ScanCode, errChan chan<- error) {
 	}()
 }
 
+// Attribute holds data for each
+// possible visualization mode
 type Attribute int
 
+// Attributes for different character
+// visualization modes
 const (
 	AttrNone  Attribute = 0
 	AttrBold  Attribute = 1
@@ -133,8 +151,10 @@ const (
 	AttrHid   Attribute = 8
 )
 
+// Color holds character color information
 type Color int
 
+// Different colors to use as attributes
 const (
 	ColorBlack Color = 30 + iota
 	ColorRed
@@ -147,6 +167,7 @@ const (
 	ColorDefault Color = 39
 )
 
+// Light returns the "ligther" version for that color
 func (c Color) Light() Color {
 	return c + 60
 }
@@ -155,12 +176,14 @@ func background(c Color) Color {
 	return c + 10
 }
 
+// CellState holds all the attributes for a cell
 type CellState struct {
 	Attrib  Attribute
 	FGColor Color
 	BGColor Color
 }
 
+// Predefined attributes
 var (
 	StateDefault = CellState{Attrib: AttrNone, FGColor: ColorDefault, BGColor: ColorDefault}
 )
@@ -170,15 +193,16 @@ type cell struct {
 	r     rune
 }
 
-// Framebuffer contains the runes to draw
-// in the terminal
+// Framebuffer contains the runes and attributes
+// that will be drawn in the terminal
 type Framebuffer struct {
 	w, h  int
 	chars []cell
 }
 
 // NewFramebuffer creates a Framebuffer with the specified size
-// and initializes it filling it with blank spaces
+// and initializes it filling it with blank spaces and default
+// attributes
 func NewFramebuffer(w, h int) *Framebuffer {
 	result := &Framebuffer{w, h, make([]cell, w*h)}
 	result.Clear()
@@ -195,7 +219,7 @@ func (f *Framebuffer) Get(x, y int) (rune, CellState) {
 	return c.r, c.state
 }
 
-// Put sets a rune in the specified position
+// Set sets a rune in the specified position with the specified attributes
 func (f *Framebuffer) Set(x, y int, s CellState, r rune) {
 	if x < 0 || y < 0 || x >= f.w || y >= f.h {
 		return
@@ -204,6 +228,7 @@ func (f *Framebuffer) Set(x, y int, s CellState, r rune) {
 	f.chars[x+y*f.w].state = s
 }
 
+// SetRune sets a rune in the specified position without modifying its attributes
 func (f *Framebuffer) SetRune(x, y int, r rune) {
 	if x < 0 || y < 0 || x >= f.w || y >= f.h {
 		return
@@ -211,7 +236,7 @@ func (f *Framebuffer) SetRune(x, y int, r rune) {
 	f.chars[x+y*f.w].r = r
 }
 
-// PutRect fills a rectangular region with a rune and state
+// SetRect fills a rectangular region with a rune and state
 func (f *Framebuffer) SetRect(x0, y0, w, h int, s CellState, r rune) {
 	for y := y0; y < y0+h; y++ {
 		for x := x0; x < x0+w; x++ {
@@ -220,7 +245,8 @@ func (f *Framebuffer) SetRect(x0, y0, w, h int, s CellState, r rune) {
 	}
 }
 
-// PutRect fills a rectangular region with a rune and state
+// AttribRect sets the attributes for a rectangular region
+// without changing the runes
 func (f *Framebuffer) AttribRect(x0, y0, w, h int, s CellState) {
 	for y := y0; y < y0+h; y++ {
 		for x := x0; x < x0+w; x++ {
@@ -234,6 +260,9 @@ func (f *Framebuffer) AttribRect(x0, y0, w, h int, s CellState) {
 var singleWidthCharset = []rune{'─', '│', '┌', '┐', '└', '┘'}
 var doubleWidthCharset = []rune{'═', '║', '╔', '╗', '╚', '╝'}
 
+// ASCIIRect draws an ASCII rectangle. It can either be
+// single-width (─) or double-width (═). It can also clear
+// the inner part of the rectangle, if desired.
 func (f *Framebuffer) ASCIIRect(x0, y0, w, h int, doubleWidth bool, clearInside bool) {
 	c := singleWidthCharset
 	if doubleWidth {
@@ -274,9 +303,10 @@ func (f *Framebuffer) ASCIIRect(x0, y0, w, h int, doubleWidth bool, clearInside 
 	}
 }
 
-// PutText draws a string from left to right, starting at x0,y0
+// SetText draws a string from left to right, starting at x0,y0
 // There is no wrapping mechanism, and parts of the text outside
-// the framebuffer will be ignored.
+// the framebuffer will be ignored. Attributes for written cells
+// will remain unchanged.
 func (f *Framebuffer) SetText(x0, y0 int, t string) {
 	i := 0
 	for _, runeValue := range t {
@@ -285,9 +315,10 @@ func (f *Framebuffer) SetText(x0, y0 int, t string) {
 	}
 }
 
-// PutText draws a string from left to right, starting at x0,y0
+// AttribText draws a string from left to right, starting at x0,y0
 // There is no wrapping mechanism, and parts of the text outside
-// the framebuffer will be ignored.
+// the framebuffer will be ignored. This call will also change the
+// written cells' attributes to the specified ones.
 func (f *Framebuffer) AttribText(x0, y0 int, s CellState, t string) {
 	i := 0
 	for _, runeValue := range t {
@@ -296,7 +327,7 @@ func (f *Framebuffer) AttribText(x0, y0 int, s CellState, t string) {
 	}
 }
 
-// Clear fills the framebuffer with blank spaces
+// Clear fills the framebuffer with blank spaces and default attributes
 func (f *Framebuffer) Clear() {
 	f.SetRect(0, 0, f.w, f.h, StateDefault, ' ')
 }
