@@ -3,6 +3,7 @@ package termo
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"syscall"
 	"unicode/utf8"
 
@@ -55,6 +56,7 @@ var cursorPos [2]int
 func SetCursor(x, y int) {
 	cursorPos[0] = x
 	cursorPos[1] = y
+	fmt.Printf("\033[%d;%dH", y+1, x+1)
 }
 
 // EnableMouseEvents makes mouse events start
@@ -185,7 +187,9 @@ type CellState struct {
 
 // Predefined attributes
 var (
-	StateDefault = CellState{Attrib: AttrNone, FGColor: ColorDefault, BGColor: ColorDefault}
+	StateDefault     = CellState{Attrib: AttrNone, FGColor: ColorDefault, BGColor: ColorDefault}
+	BoldWhiteOnBlack = CellState{Attrib: AttrBold, FGColor: ColorGray.Light(), BGColor: ColorBlack}
+	BoldBlackOnWhite = CellState{Attrib: AttrBold, FGColor: ColorBlack, BGColor: ColorGray.Light()}
 )
 
 type cell struct {
@@ -272,8 +276,8 @@ func (f *Framebuffer) ASCIIRect(x0, y0, w, h int, doubleWidth bool, clearInside 
 	for y := y0; y < y0+h; y++ {
 		for x := x0; x < x0+w; x++ {
 			var r rune
-			if x == 0 {
-				if y == 0 {
+			if x == x0 {
+				if y == y0 {
 					r = c[2]
 				} else if y == y0+h-1 {
 					r = c[4]
@@ -281,14 +285,14 @@ func (f *Framebuffer) ASCIIRect(x0, y0, w, h int, doubleWidth bool, clearInside 
 					r = c[1]
 				}
 			} else if x == x0+w-1 {
-				if y == 0 {
+				if y == y0 {
 					r = c[3]
 				} else if y == y0+h-1 {
 					r = c[5]
 				} else {
 					r = c[1]
 				}
-			} else if y == 0 || y == y0+h-1 {
+			} else if y == y0 || y == y0+h-1 {
 				r = c[0]
 			} else {
 				if !clearInside {
@@ -303,15 +307,37 @@ func (f *Framebuffer) ASCIIRect(x0, y0, w, h int, doubleWidth bool, clearInside 
 	}
 }
 
-// SetText draws a string from left to right, starting at x0,y0
+// SetText draws a string from left to right, and top-to bottom,
+// starting at x0,y0.
 // There is no wrapping mechanism, and parts of the text outside
 // the framebuffer will be ignored. Attributes for written cells
 // will remain unchanged.
 func (f *Framebuffer) SetText(x0, y0 int, t string) {
 	i := 0
 	for _, runeValue := range t {
+		if runeValue == '\n' {
+			i = 0
+			y0++
+			continue
+		}
 		f.SetRune(x0+i, y0, runeValue)
 		i++
+	}
+}
+
+// CenterText draws a string from left to right and top-to-bottom,
+// starting at x-len(t)/2,y0.
+// There is no wrapping mechanism, and parts of the text outside
+// the framebuffer will be ignored. Attributes for written cells
+// will remain unchanged.
+func (f *Framebuffer) CenterText(x, y0 int, t string) {
+	lines := strings.Split(t, "\n")
+	for y, s := range lines {
+		i := 0
+		for _, runeValue := range s {
+			f.SetRune(x+i-len(s)/2, y0+y, runeValue)
+			i++
+		}
 	}
 }
 
@@ -322,6 +348,11 @@ func (f *Framebuffer) SetText(x0, y0 int, t string) {
 func (f *Framebuffer) AttribText(x0, y0 int, s CellState, t string) {
 	i := 0
 	for _, runeValue := range t {
+		if runeValue == '\n' {
+			i = 0
+			y0++
+			continue
+		}
 		f.Set(x0+i, y0, s, runeValue)
 		i++
 	}
